@@ -35,6 +35,10 @@ def parse_excel_file(df: pd.DataFrame) -> Dict[str, Any]:
                 actual_columns[standard_name] = orig_col
                 break
     
+    # Debug: Print what columns were found
+    print(f"DEBUG: Original columns in file: {original_columns}")
+    print(f"DEBUG: Column mapping found: {actual_columns}")
+    
     # Validate required columns
     required = ['productid', 'category']
     missing = [r for r in required if r not in actual_columns]
@@ -47,13 +51,23 @@ def parse_excel_file(df: pd.DataFrame) -> Dict[str, Any]:
             f"Looking for: ProductID (or Product ID, ID) and Category (or Cat)"
         )
     
+    # Debug: Check what values are in the Category column
+    if 'category' in actual_columns:
+        category_col = actual_columns['category']
+        unique_categories = df[category_col].dropna().unique()[:10]  # First 10 unique values
+        print(f"DEBUG: Sample category values found: {list(unique_categories)}")
+        print(f"DEBUG: Total rows: {len(df)}")
+    
     # Extract data
     parsed = {
         'products': [],
         'transactions': []
     }
     
-    for _, row in df.iterrows():
+    # Debug: Track first few categories we see
+    sample_categories_seen = []
+    
+    for idx, row in df.iterrows():
         try:
             # Get product ID (required)
             product_id = row[actual_columns['productid']]
@@ -65,10 +79,15 @@ def parse_excel_file(df: pd.DataFrame) -> Dict[str, Any]:
             if pd.isna(category):
                 continue  # Skip rows with missing category
             
+            # Debug: Track first 5 categories
+            category_str = str(category).strip()
+            if len(sample_categories_seen) < 5 and category_str not in sample_categories_seen:
+                sample_categories_seen.append(category_str)
+            
             product = {
                 'productId': str(product_id),
                 'description': str(row.get(actual_columns.get('product_description', ''), 'N/A')) if actual_columns.get('product_description') else 'N/A',
-                'category': str(category),
+                'category': str(category).strip(),  # Strip whitespace from category
                 'subcategory': str(row.get(actual_columns.get('subcategory', ''), 'N/A')) if actual_columns.get('subcategory') else 'N/A',
                 'hasZeroWaste': _parse_zero_waste_flag(
                     row.get(actual_columns.get('zero_waste', ''), False) if actual_columns.get('zero_waste') else False
@@ -88,6 +107,14 @@ def parse_excel_file(df: pd.DataFrame) -> Dict[str, Any]:
                     'transactionId': str(txn_id),
                     'productId': product['productId']
                 })
+    
+    # Debug: Print summary
+    print(f"DEBUG: Parsed {len(parsed['products'])} products")
+    print(f"DEBUG: Sample categories seen during parsing: {sample_categories_seen}")
+    if parsed['products']:
+        all_categories = [p['category'] for p in parsed['products']]
+        unique_parsed = list(set(all_categories))[:10]
+        print(f"DEBUG: Unique categories in parsed data: {unique_parsed}")
     
     return parsed
 
