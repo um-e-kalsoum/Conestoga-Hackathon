@@ -30,7 +30,36 @@ async def upload_file(file: UploadFile = File(...)):
             if file.filename.endswith('.csv'):
                 df = pd.read_csv(file_obj)
             elif file.filename.endswith(('.xlsx', '.xls')):
-                df = pd.read_excel(file_obj, engine='openpyxl')
+                # Check if Excel has multiple sheets
+                # Reset file pointer for ExcelFile
+                file_obj.seek(0)
+                excel_file = pd.ExcelFile(file_obj, engine='openpyxl')
+                sheet_names = excel_file.sheet_names
+                print(f"DEBUG: Excel sheets found: {sheet_names}")
+                
+                # Look for sheet with product data (has Product ID or Product Description)
+                df = None
+                for sheet_name in sheet_names:
+                    file_obj.seek(0)  # Reset for each read
+                    temp_df = pd.read_excel(file_obj, sheet_name=sheet_name, engine='openpyxl')
+                    columns_lower = [col.lower() for col in temp_df.columns]
+                    print(f"DEBUG: Sheet '{sheet_name}' columns: {list(temp_df.columns)}")
+                    # Check if this sheet has product-related columns
+                    has_product_id = any('product' in col and 'id' in col for col in columns_lower)
+                    has_category = any('category' in col and 'transaction' not in col for col in columns_lower)
+                    has_product_desc = any('product' in col and 'description' in col for col in columns_lower)
+                    
+                    if has_product_id or (has_category and has_product_desc):
+                        df = temp_df
+                        print(f"DEBUG: Using sheet '{sheet_name}' with product data")
+                        break
+                
+                # If no product sheet found, use first sheet
+                if df is None:
+                    file_obj.seek(0)
+                    df = pd.read_excel(file_obj, sheet_name=sheet_names[0], engine='openpyxl')
+                    print(f"DEBUG: No product sheet found, using first sheet: '{sheet_names[0]}'")
+                    print(f"WARNING: First sheet may not contain product data. Columns: {list(df.columns)}")
             else:
                 raise HTTPException(
                     status_code=400, 
